@@ -1,7 +1,8 @@
 # The Noisy Neighbour Is a Robot: Characterizing Multi-Agent Workloads on the Open Lakehouse
 
 **Target:** VLDB 2027 Industrial Track (deadline 2 Mar 2027 — verify)
-**Status:** Draft v0.1 — Sections 1–4 drafted, 5–7 scaffolded
+**Status:** Draft v0.2 — Sections 1–5 drafted with harness results; 6–7 scaffolded
+**Artifact:** `harness/` in this repo (agentlake), 24 tests passing
 **Author:** Kiran Bhusnurmath
 
 > **Drafting conventions used below:**
@@ -174,43 +175,106 @@ reviewer — if you can measure it, lead with it.]]`
 
 ### 3.2 Measurement methodology
 
-`[[DECIDE + EVIDENCE: depends entirely on route.
+We release `agentlake`, an open harness that drives a configurable fleet of analytical
+agents against a lakehouse under test and instruments the platform side. It runs
+in-process on DuckDB over a natively generated star schema, with no cluster, no API key
+and no network access, so any number reported here can be reproduced on a laptop.
 
-Route A (production telemetry): describe the deployment, the observation window, how agent-originated
-traffic is attributed and separated from human traffic, what was anonymized and how, and the
-limitations of observational data — you cannot control for workload mix, so be upfront that this is
-descriptive not causal.
+**Agents are synthetic.** No model is in the loop. A turn is generated from an explicit
+phase model — counts for discovery and sampling, a correction probability, an
+abandonment probability — and is fully determined by a seed. This is a deliberate
+trade: we give up the realism of a live agent's decisions in exchange for
+reproducibility and for the ability to vary one parameter at a time. The phase model
+reproduces the *shape* of agent traffic, not the judgement of any particular agent.
 
-Route B (harness): describe the harness. Configurable agent fleet size and concurrency; standard
-lakehouse under test; which engine(s); instrumentation points; the question corpus driving the agents
-and where it comes from. The corpus choice will be attacked in review — decide early whether to derive
-it from an existing public benchmark (defensible, comparable, but inherits that benchmark's biases) or
-to construct one (more realistic, harder to defend).
+**Every phase parameter is an assumption, not a measurement.** The harness records this
+explicitly: each `PhaseModel` carries a `provenance` field, and the defaults declare
+themselves uncalibrated. All results below were produced with uncalibrated defaults and
+should be read as characterizing the *structure* of the cost, not its magnitude in any
+real deployment. `[[Recalibrate against production traces if available; this is the
+single change that would most strengthen the paper.]]`
 
-Either way: state clearly what you can and cannot measure, before you present a single number.]]`
+**Corrections are constructed, not hoped for.** To ask whether a result cache catches
+correction-phase queries, we need correction queries that are semantically equivalent to
+what they replace. The harness rewrites a canonical query into equivalent forms — alias
+renaming, comma-join, CTE wrapping, tautological predicates, reformatting — and the test
+suite asserts that every rewrite returns identical rows. Without that assertion, any
+cache finding would be an artifact of the mutator emitting genuinely different queries.
+
+**Two caches are simulated over one query stream.** `ExactTextCache` keys on normalised
+query text, as analytical engines conventionally do. `PlanCache` keys on a fingerprint
+of the optimised operator tree. Simulating both over the identical stream provides the
+counterfactual that a real engine, which gives you one cache, cannot.
+
+The fingerprint strips aliases, whitespace, case and cardinality estimates but retains
+filter literals. This matters more than it sounds: an earlier, coarser fingerprint
+collided `revenue by region` with `units by store`, which would have made the plan cache
+serve wrong results and inflated its measured hit rate. The test suite now checks both
+directions — equivalent rewrites must collide, and questions differing only in a filter
+literal must not.
+
+**The sweep holds total work constant.** Fleet size varies; total turns across the fleet
+does not. Our first attempt held turns *per agent* constant instead, which made larger
+fleets do proportionally more total work, warmed the shared cache further, and produced
+a spurious *negative* scaling exponent — per-question cost appeared to fall with fleet
+size for reasons that had nothing to do with concurrency. Questions are drawn Zipf-style
+from a parameterised space so that question diversity is a property of the workload
+rather than an accident of fleet size.
 
 ### 3.3 Findings
 
-`[[EVIDENCE — this section is the paper. Proposed axes, in the order I would present them:
+Reference configuration: fleet sizes 1, 2, 4, 8, 16 and 32; 192 total turns held
+constant across sizes; 400,000 fact rows; uncalibrated default phase model. Each fleet
+size gets a fresh engine and fresh caches. The control condition is an idealised human
+analyst — one deliberate query per question, no rediscovery, no retry, no abandonment.
 
-1. Scan amplification: bytes scanned per answered question vs. per issued query. The gap between
-   these two is the paper's headline if it is large.
-2. Result-cache behaviour under near-duplicate queries. Hypothesis: correction-phase queries are
-   semantically near-identical but textually distinct, so exact-match caching collapses precisely
-   when it would help most. If true and quantified, this is a concrete, actionable finding an engine
-   team can act on.
-3. Catalog request distribution. Hypothesis: discovery-phase traffic concentrates on a small number
-   of popular namespaces, producing metadata hot spots that do not appear in human workloads. Check
-   for skew, not just volume.
-4. Concurrency effects: does aggregate cost scale linearly in fleet size, or worse? Superlinearity
-   is the single most publishable result available here, because it is the thing that cannot be
-   inferred from any single-agent study.
-5. Write-side pressure from agent state, if colocated. Small-file counts, manifest growth,
-   compaction load.
+| | agentic | human control | ratio |
+|---|---|---|---|
+| Queries per answered question | 3.81 | 1.00 | 3.8x |
+| Rows scanned per answered question | 969,865 | 375,731 | **2.58x** |
+| Rows scanned per issued query | 254,416 | 375,731 | **0.68x** |
+| Scanned rows never delivered | 60.7% | 0.0% | — |
+| Rows scanned on abandoned turns | 7.6% | 0.0% | — |
 
-Do not report an axis you cannot measure cleanly. Three solid findings beat six soft ones.]]`
+**Finding 1: per-query monitoring inverts the sign of the result.** Agent-issued queries
+scan 32% *fewer* rows each than the control, while the workload costs 2.58x more per
+unit of delivered value. A conventional per-query dashboard would report that the
+platform had become more efficient. The discrepancy is exactly the fan-out factor: the
+denominator changed and the metric did not follow. We consider this the paper's most
+practically consequential result, because it means the instrumentation most
+organizations already have will mislead them in the reassuring direction.
 
----
+**Finding 2: roughly 60% of scanned rows never reach a user.** Sampling, superseded
+corrections and abandoned turns account for the majority of platform work. Abandonment
+alone is about 7.6% — and abandoned work is invisible to every accuracy metric in the
+existing literature, because a benchmark that scores the final answer cannot see what
+was discarded on the way to it.
+
+**Finding 3: plan-keyed caching closes about 41% of the residual misses** left by
+exact-text caching (93.4% vs 88.8% hit rate). The gap is the correction phase: rewrites
+that are semantically identical and textually distinct. This is a concrete, actionable
+result for an engine team, and it does not require any change to how agents behave.
+
+**Finding 4 (negative): no superlinearity.** Cost per answered question is flat in fleet
+size from 1 to 32 agents — a fitted scaling exponent of k = -0.026, where k = 0 is exact
+linearity. We expected to find the opposite. Under this configuration, agent cost is
+additive rather than compounding.
+
+We report this negative result prominently because it constrains the argument. The case
+for treating agentic workloads as a distinct systems problem rests on the *per-question*
+cost structure and on the measurement inversion in Finding 1 — not on any claim that
+matters get worse with scale. It also comes with a real caveat: an in-process engine has
+no cluster, no shuffle, no shared executor pool and no catalog service under load, so
+contention effects that would appear on a distributed engine **cannot** appear here.
+Finding 4 is evidence about this configuration, and re-testing it on a distributed
+engine is the first thing we would do next. `[[If you can run the harness against Trino
+or Spark before submission, do it — a distributed replication would materially
+strengthen the paper, and a *different* answer there would be more interesting still.]]`
+
+**Catalog skew** sits at 0.27–0.31 (Gini) and is stable across fleet sizes. We note it
+without drawing a conclusion: skew here is a product of our question-driven discovery
+model, and while an earlier uniform-draw model made skew unmeasurable by construction,
+the present value still reflects modelling choices more than platform behaviour.
 
 ## 4. Three structural mismatches
 
@@ -267,15 +331,22 @@ could do — give it room.]]`
 
 ---
 
-## 5. Evaluation
+## 5. Artifact
 
-`[[DECIDE + EVIDENCE. Structure depends on route. If Route B, this is where the harness results live
-and Section 3.3 becomes the characterization while this becomes the controlled experiments —
-particularly the fleet-size sweep for the superlinearity question. If Route A, consider merging this
-into Section 3 and renumbering; a purely observational paper should not pretend to have an
-evaluation section.]]`
+`agentlake` is released with this paper. `[[DECIDE: repository URL and licence before
+submission.]]`
 
----
+The harness is ~1,100 lines of Python with one dependency (DuckDB) and a suite of 24
+tests. The tests are part of the contribution rather than hygiene: the central claim
+that correction-phase queries *should* be cache hits is only meaningful if the mutations
+really preserve meaning, so the suite executes every mutation of every corpus question
+and compares result sets. Two substantive bugs reported in Section 3 — the over-colliding
+plan fingerprint and the alias rewriter that silently failed on quoted identifiers —
+were found by those tests rather than by inspection.
+
+To target another engine, implement the `EngineAdapter` interface; the report contract
+is unchanged. A distributed adapter is the obvious next contribution, for the reason
+given in Finding 4.
 
 ## 6. Mitigations in practice
 
