@@ -71,34 +71,40 @@ harness and reproducible with the commands in `harness/README.md`. 27 tests pass
 to validity, conclusion and reference list are written. Route B was executed: the harness
 exists, runs, and produced every number in the paper.
 
-**Related work: substantially resolved.** Publisher domains (arxiv, dl.acm, vldb.org,
-Springer, Elsevier) are all blocked by this environment's egress policy, and alternative
-scholarly APIs (export.arxiv.org, Semantic Scholar, OpenAlex, Crossref, CORE, EuropePMC)
-are blocked too. GitHub git reads are not. That turned out to be enough for the two sources
-that matter most:
+**Related work: read.** Publisher domains and every scholarly API are blocked here
+(arxiv, dl.acm, vldb.org, export.arxiv.org, Semantic Scholar, OpenAlex, Crossref, CORE,
+EuropePMC). GitHub git reads are not, and four of the five works this paper positions
+against ship public artifacts:
 
-- **SQLStorm [1]** — cloned `github.com/SQL-Storm/SQLStorm` and read the benchmark, its
-  documentation and its released query sets directly. This corrected a material error:
+- **SQLStorm [1]** — `github.com/SQL-Storm/SQLStorm`. Reading it corrected a material error:
   SQLStorm is **not** an agent-accuracy benchmark, it is a benchmark *of database engines*
-  that uses an LLM as a query generator. The earlier draft mischaracterized it, which would
-  have been visible to its authors — likely reviewers. Section 2.3 now describes it
-  correctly, with query counts (18,251 StackOverflow; 17,036 TPC-H; 15,242 TPC-DS; 11,714
-  JOB), dataset scales, engine list and its dialect-bias observation taken from the artifact.
-- **The data-agents survey [22]** — cloned `github.com/HKUSTDial/awesome-data-agents`, which
-  ships the full 31-page survey PDF, and read it end to end. This produced the strongest
-  single piece of evidence in the paper: across its 28,688 words, the platform-side
-  vocabulary is absent (throughput 0, queue 0, contention 0, result cache 0, scan 0, fan-out
-  0, retry 0, abandon 0, admission control 0, lakehouse 0, catalog 1 — and that one hit is
-  about agents building semantic catalogs, verified in context). The gap this paper
-  addresses is now **demonstrated** rather than asserted, and
-  `harness/analyse_survey_coverage.py` lets a reviewer recompute the table.
+  that uses an LLM as a query generator. The earlier draft mischaracterized it to its own
+  authors, who are likely reviewers.
+- **FDABench [4]** — `github.com/fdabench/FDAbench`, including its technical report and agent
+  source. This corrected a second error. FDABench's `base_agent.py` decomposes agent latency
+  and tokens into `decision`/`execute`/`retry`/`generate` ratios — a phase decomposition with
+  an explicit retry term, much closer to our Section 3.1 taxonomy than the draft allowed. Its
+  "multi-agent" architecture is also a coordinator plus specialist experts on one task, not a
+  fleet. Section 2.3 now says both, and the gap claim is narrowed to what survives: FDABench
+  accounts for what the *agent* spends, we account for what the *platform* spends.
+  Venue confirmed **KDD 2026** from the repository; the ICML 2026 reading was wrong (that is
+  CoDA-Bench).
+- **AgenticDataBench [3]** — `github.com/AgenticDataBench/AgenticDataBench`. Every count in
+  Section 2.3 was recomputed from its data files rather than quoted: 6,510 StackOverflow
+  solutions (`stackoverflow-data-science.jsonl`), 433 skill clusters
+  (`skill-descriptions.jsonl`), 344 tasks (`num_results` in its results files), 246 public
+  gold tasks, 15 domains.
+- **The data-agents survey [22]** — `github.com/HKUSTDial/awesome-data-agents`, which ships
+  the full 31-page PDF. Read end to end. Source of the term-frequency evidence.
 
-**Still outstanding, and much smaller.** References [2] text-to-Big SQL, [3]
-AgenticDataBench and [4] FDABench are characterized from published abstracts, not full
-texts. Section 2.3 is written to stay strictly within what those abstracts support, and the
-paper's source-status note says so. Read those three before submission and confirm each
-characterization. One concrete item to settle: [4]'s venue reads KDD 2026 in the survey's
-curated list and ICML 2026 in one secondary source.
+**Still outstanding: one source.** Text-to-Big SQL [2] has no artifact we could locate and is
+characterized from its abstract and published summaries. Section 2.3 stays within what those
+support and attributes its figures rather than asserting them. Authors are Eizaguirre, Tissen
+and Sánchez-Artigas (Universitat Rovira i Virgili / RWTH Aachen). Confirm the "both ends"
+framing and the TPC-H Q21 SF 10→1000 figure against its text before submission.
+
+That reading changed the paper twice in ways a reviewer would have caught, which is the
+argument for closing the last one rather than treating it as a formality.
 
 **Two things that would materially strengthen it, neither blocking:**
 1. **Recalibrate the phase model** against real agent traces. Every parameter currently
