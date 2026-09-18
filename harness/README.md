@@ -113,6 +113,38 @@ Raw output in `results/`.
    limitation above, this should be re-tested on a distributed engine before being
    generalised.
 
+## Mitigation ablation
+
+```bash
+python run_mitigations.py --fleet 8 --turns 192 --rows 400000
+```
+
+Five interventions against the same dataset, fleet and seed. Independent RNG streams
+per decision type mean changing one phase's parameters leaves the others' decisions
+bit-identical — without that control, disabling discovery (which removes no scan work
+at all) appeared to make the workload 6% more expensive.
+
+| Intervention | Scan/question | vs. base | Fan-out | Answered | Space retained |
+|---|---|---|---|---|---|
+| None (baseline) | 997,219 | — | 4.01 | 165 | 100% |
+| Pinned schema context | 997,219 | 0.0% | 4.01 | 165 | 100% |
+| Cached column profiles | 639,514 | **−35.9%** | 1.68 | 165 | 100% |
+| Tight correction budget | 1,031,613 | **+3.4%** | 4.28 | 149 | 100% |
+| Semantic layer boundary | 665,695 | −33.2% | 1.67 | 164 | **15%** |
+| Semantic layer + budget | 673,400 | −32.5% | 1.70 | 149 | 15% |
+
+- **Cached profiles are the only near-free win**: −35.9% scan cost, same answers.
+  Sampling, not analytical querying, is where the budget goes.
+- **Pinned schema saves zero scan** but eliminates all 1,152 catalog requests. Right
+  fix for a catalog-bound platform, irrelevant to a scan-bound one.
+- **Capping retries backfires** (+3.4%): answers fall 165→149 while fan-out rises. A
+  capped agent still pays for its failed attempt and loses the retry that would have
+  redeemed it.
+- **The semantic layer has a capability cliff**: 33.2% saving, 15% of questions still
+  answerable. Argue it on governance grounds, not efficiency.
+- **Cache hit rates flatter.** Removing sampling drops the exact-text rate from 89.2%
+  to 70.0% — the healthy baseline number is an artifact of repetitive `LIMIT` queries.
+
 ## Layout
 
 ```
@@ -126,7 +158,9 @@ agentlake/
   metrics.py   Aggregation, Gini skew, RunReport
   fleet.py     Fleet driver
   sweep.py     Fleet-size sweep and scaling exponent
-run_sweep.py   CLI
+  mitigations.py  Intervention ablation
+run_sweep.py       CLI: fleet-size sweep
+run_mitigations.py CLI: mitigation ablation
 tests/         24 tests, including meaning-preservation of every mutation
 ```
 
