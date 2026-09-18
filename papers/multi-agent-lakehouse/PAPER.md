@@ -5,14 +5,17 @@
 **Artifact:** `harness/` in this repo (agentlake), 24 tests passing
 **Author:** Kiran Bhusnurmath
 
-> **One blocker remains before submission.** `[[VERIFY]]` marks a claim about prior work
-> taken from search-result metadata rather than from the source, which could not be
-> retrieved while drafting. Every such claim must be checked against the paper it
-> describes. `NOTES.md` lists the sources; see Section 9.
+> **Source status.** References [1] (SQLStorm, read from its released repository and
+> benchmark artifacts) and [22] (the data-agents survey, read in full as PDF) are primary
+> sources and the quantitative claims drawn from them are direct. References [2]-[4] and the
+> remainder are characterized from published abstracts and bibliographic metadata rather
+> than from full text, which could not be retrieved in the drafting environment. Section 2.3
+> is written to stay within what those abstracts support. Before submission, read [2], [3]
+> and [4] in full and confirm each characterization.
 >
-> All quantitative results below are measured by the released harness and are reproducible
-> with the commands in `harness/README.md`. Claims that would require production telemetry
-> are not made; where they would have strengthened the paper, Section 8 says so.
+> All quantitative results are measured by the released harness and reproducible with the
+> commands in `harness/README.md`. Claims that would require production telemetry are not
+> made; Section 8 says where such data would have helped.
 
 ---
 
@@ -187,36 +190,79 @@ provide, and Section 6.4 measures what it costs.
 
 ### 2.3 What the existing literature measures
 
-Work on agents and databases has concentrated, reasonably, on whether the agent produces
-the right answer. A substantial benchmark literature evaluates text-to-SQL accuracy across
-schemas, domains and difficulty levels, and more recent work has extended the frame in two
-useful directions: toward realistic production settings rather than curated schemas, and
-toward efficiency as well as correctness -- recognising that semantically equivalent SQL
-can differ substantially in physical plan quality, shuffle volume and scan efficiency at
-scale. Benchmarks aimed specifically at data *agents*, as opposed to translation models,
-extend this to multi-step tasks over heterogeneous sources.
+Work at the intersection of LLMs and data systems has grown quickly, and it divides into
+three strands, none of which measures what happens to a platform serving many agents.
 
-This is the right literature and it is making progress. Our observation about it is
-narrow and is a matter of scope rather than quality: every evaluation in it measures **one
-agent completing one task**. Accuracy is a property of a single answer. Per-query
-efficiency is a property of a single query. Neither can express what a hundred agents do
-to a shared result cache, a shared catalog, a shared executor pool, or a shared budget,
-because none of those is a property of any single agent's behaviour.
+**Benchmarks of engines, using generated workloads.** SQLStorm [1] uses an LLM as a query
+*generator* rather than as a subject: GPT-4o-mini produces analytical queries against a
+schema, and the resulting workload is used to benchmark database systems. The released
+benchmark contains 18,251 queries on a StackOverflow dataset at 1GB, 12GB and 222GB, plus
+comparable sets on TPC-H, TPC-DS and JOB, run across eight engines with a per-query
+timeout. Its argument is that human-written benchmarks such as TPC-H, TPC-DS and JOB cover
+a narrow band of SQL functionality, and that generated workloads cover far more. This is
+the closest relative to our work in spirit -- both use generated workloads to stress
+engines rather than to score models -- and the difference is precisely our subject: SQLStorm
+issues one query at a time, with no agent loop around it, so it has no notion of discovery,
+sampling, correction, abandonment, fan-out or concurrency. It is worth noting one of its
+incidental findings, that LLM-generated SQL skews toward PostgreSQL dialect and required
+an explicit rewriting pass for cross-engine compatibility; dialect bias is a property of
+this consumer that a platform serving several engines will meet.
 
-There is a second scoping consequence, less obvious. An evaluation that scores the final
-answer cannot see the work discarded on the way to it. Sampling queries, superseded
-correction attempts and abandoned turns are all invisible to a metric computed on the
-answer -- and Section 3.3 finds that they account for roughly 60% of the rows the platform
-scans. The existing literature is not wrong about this; it is structurally unable to
-observe it.
+**Evaluations of text-to-SQL translation.** A large literature scores whether generated SQL
+is correct. The most relevant recent development is a move past binary correctness:
+text-to-Big SQL [2] argues that a 0/1 label is the wrong instrument at scale, since an
+unnecessarily projected column is not equivalent to a wrong answer when re-running the
+query is expensive, and proposes metrics that account jointly for partial correctness and
+cost. It also observes that agentic scaffolding adds reasoning and orchestration latency,
+to the point where generation can become slower than execution. That observation is
+adjacent to our Finding 4 and complementary to it: they find latency accruing on the
+*generation* side of a single query, we find it accruing on the *execution* side under
+fleet concurrency.
+
+**Benchmarks of data agents.** A cluster of recent benchmarks evaluates agents on
+multi-step analytical tasks rather than single translations. FDABench [4] contributes 2,007
+tasks over heterogeneous sources, split across single-choice, multiple-choice and report
+formats. AgenticDataBench [3] mines 433 reusable skills from 6,510 StackOverflow solutions
+and combines them into 344 tasks across 15 domains, grading skill by skill so that failures
+can be localised rather than merely counted. Others in this family include DataSpace,
+DAComp, KramaBench and DABstep [21]. These are genuine advances in evaluating agents. They
+evaluate *one agent completing one task*.
+
+**The gap, quantified.** Our claim that the platform side is unexamined is not an
+impression. A recent 31-page survey of data agents [22], covering roughly 200 references
+and proposing an L0–L5 autonomy taxonomy for the field, offers a way to check it. Across
+its 28,688 words:
+
+| Platform-side term | Occurrences | | Agent-side term | Occurrences |
+|---|---|---|---|---|
+| throughput | **0** | | LLM | 178 |
+| queue | **0** | | tool | 61 |
+| contention | **0** | | planning | 24 |
+| concurrent execution | **0** | | memory | 15 |
+| result cache / cache hit | **0** | | benchmark | 12 |
+| scan | **0** | | accuracy | 8 |
+| fan-out | **0** | | | |
+| retry / abandon | **0** | | | |
+| admission control | **0** | | | |
+| workload characterization | **0** | | | |
+| lakehouse / Iceberg | **0** | | | |
+| catalog | 1 | | | |
+
+The survey is a good survey; this is not a criticism of it. It is an accurate reflection of
+where the field's attention sits. The vocabulary in which a platform engineer would describe
+serving an agent fleet -- throughput, queueing, contention, cache behaviour, scan cost,
+admission control -- does not appear in the field's own comprehensive account of itself.
+
+Two consequences follow, and the second is easy to miss. The first is the obvious scoping
+point: accuracy is a property of one answer and per-query efficiency a property of one
+query, so neither can express what a hundred agents do to a shared cache, catalog or
+executor pool. The second is that an evaluation scoring the *final answer* is structurally
+unable to see the work discarded on the way to it. Sampling queries, superseded corrections
+and abandoned turns are invisible to any metric computed on the answer, and Section 3.3
+finds they account for roughly 60% of the rows the platform scans.
 
 We therefore position this work as complementary rather than competing. We contribute no
-accuracy result and no new text-to-SQL technique. We measure the platform.
-
-`[[VERIFY: this section describes the related literature in general terms because the
-sources could not be retrieved during drafting. Before submission, replace each general
-characterization with a specific one naming the system and its finding. This is the single
-largest remaining correctness risk in the paper -- see NOTES.md.]]`
+accuracy result and no text-to-SQL technique. We measure the platform.
 
 ## 3. Characterizing the workload
 
@@ -735,6 +781,13 @@ is used throughout.
 weaker than commonly presented. That argument is analytical. We did not construct
 exfiltration sequences and we report no empirical security result.
 
+**Two of our sources are primary; most are not.** SQLStorm [1] was read from its released
+repository and FDABench's, AgenticDataBench's and text-to-Big SQL's characterizations come
+from published abstracts rather than full texts. The term-frequency evidence in Section 2.3
+is computed over the full text of [22] and is exact. Where we describe a system's
+contribution we have stayed within what its abstract states; where we would have needed more
+we have said less.
+
 **We measure no inference cost.** The agent-side cost of running the models is outside the
 harness entirely. A complete account of agentic workload economics would include it, and
 Section 6.6 notes the mitigation we consequently could not evaluate.
@@ -780,19 +833,32 @@ in our own results.
 
 ## 10. References
 
-*Assembled from verified bibliographic metadata. **The sources themselves could not be
-retrieved during drafting**, so the characterizations in Sections 1 and 2.3 are general by
-design. Each entry must be read and its claim checked before submission; see `NOTES.md`.*
+*Entries [1] and [22] were read directly: [1] from its released repository and benchmark
+artifacts, [22] in full. The remainder are characterized from published abstracts and
+verified bibliographic metadata; full texts could not be retrieved while drafting. Sections
+1 and 2.3 are written to stay within what those abstracts support. Confirm [2], [3] and [4]
+against their full texts before submission — see `NOTES.md`.*
+
+### Read directly
+
+1. T. Schmidt, V. Leis, P. Boncz, T. Neumann. *SQLStorm: Taking Database Benchmarking into
+   the LLM Era.* PVLDB 18(11): 4144–4157, 2025. doi:10.14778/3749646.3749683.
+   Artifacts: `github.com/SQL-Storm/SQLStorm`. *(Query counts, dataset scales, engine list
+   and dialect-bias observation in Section 2.3 are taken from the released benchmark and
+   its documentation.)*
+22. Y. Zhu, L. Wang, C. Yang, X. Lin, B. Li, W. Zhou, X. Liu, Z. Peng, T. Luo, Y. Li,
+   C. Chai, C. Chen, S. Di, J. Fan, J. Sun, N. Tang, F. Tsung, J. Wang, C. Wu, Y. Xu,
+   S. Zhang, Y. Zhang, X. Zhou, G. Li, Y. Luo. *A Survey of Data Agents: Emerging Paradigm
+   or Overstated Hype?* Companion repository: `github.com/HKUSTDial/awesome-data-agents`.
+   *(The term-frequency table in Section 2.3 was computed over the full text of this survey.)*
 
 ### Agent and text-to-SQL evaluation
 
-1. T. Schmidt et al. *SQLStorm: Taking Database Benchmarking into the LLM Era.* PVLDB,
-   vol. 18, p. 4144.
 2. *Both Ends Count! Just How Good are LLM Agents at Text-to-"Big SQL"?*
-   arXiv:2602.21480; ACM DL 10.1145/3805621.3807640.
+   arXiv:2602.21480; ACM DL doi:10.1145/3805621.3807640.
 3. *AgenticDataBench: A Comprehensive Benchmark for Data Agents.* arXiv:2607.01647.
 4. *FDABench: A Benchmark for Data Agents on Analytical Queries over Heterogeneous Data.*
-   arXiv:2509.02473.
+   arXiv:2509.02473. KDD 2026. *(One secondary source gives ICML 2026; confirm the venue.)*
 5. *Agent Bain vs. Agent McKinsey: A New Text-to-SQL Benchmark for the Business Domain.*
    arXiv:2510.07309.
 6. *ReViSQL: Achieving Human-Level Text-to-SQL.* arXiv:2603.20004.
@@ -801,6 +867,10 @@ design. Each entry must be read and its claim checked before submission; see `NO
    arXiv:2511.01008.
 9. *DS-STAR: Data Science Agent for Solving Diverse Tasks across Heterogeneous Formats and
    Open-Ended Queries.* arXiv:2509.21825.
+21. Further data-agent benchmarks surveyed in [22]: *DataSpace* (arXiv:2608.03451),
+   *DAComp* (arXiv:2512.04324, ICLR 2026), *KramaBench* (arXiv:2506.06541, ICLR 2026),
+   *DABstep* (arXiv:2506.23719), *Can AI Agents Answer Your Data Questions?*
+   (arXiv:2603.20576).
 
 ### Lakehouse architecture and field experience
 

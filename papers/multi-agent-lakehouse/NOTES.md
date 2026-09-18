@@ -71,18 +71,34 @@ harness and reproducible with the commands in `harness/README.md`. 27 tests pass
 to validity, conclusion and reference list are written. Route B was executed: the harness
 exists, runs, and produced every number in the paper.
 
-**Blocking submission: the related work has not been read.** arxiv.org, dl.acm.org,
-vldb.org and every publisher domain were unreachable from the drafting environment. The
-twenty references below are real -- titles, identifiers and venues were verified through
-search -- but *no source was retrieved and read*. Sections 1 and 2.3 therefore describe the
-prior literature in deliberately general terms, and Section 2.3 carries the only remaining
-`[[VERIFY]]` marker in the paper.
+**Related work: substantially resolved.** Publisher domains (arxiv, dl.acm, vldb.org,
+Springer, Elsevier) are all blocked by this environment's egress policy, and alternative
+scholarly APIs (export.arxiv.org, Semantic Scholar, OpenAlex, Crossref, CORE, EuropePMC)
+are blocked too. GitHub git reads are not. That turned out to be enough for the two sources
+that matter most:
 
-This is not a polish item. Submitting a paper whose related-work section was assembled from
-search snippets risks misattributing findings to the very people most likely to review it,
-and references 1 and 2 are the most probable reviewers. **Read at minimum SQLStorm and
-Text-to-Big SQL before anything else**, then replace each general characterization in
-Section 2.3 with a specific one naming the system and its result.
+- **SQLStorm [1]** — cloned `github.com/SQL-Storm/SQLStorm` and read the benchmark, its
+  documentation and its released query sets directly. This corrected a material error:
+  SQLStorm is **not** an agent-accuracy benchmark, it is a benchmark *of database engines*
+  that uses an LLM as a query generator. The earlier draft mischaracterized it, which would
+  have been visible to its authors — likely reviewers. Section 2.3 now describes it
+  correctly, with query counts (18,251 StackOverflow; 17,036 TPC-H; 15,242 TPC-DS; 11,714
+  JOB), dataset scales, engine list and its dialect-bias observation taken from the artifact.
+- **The data-agents survey [22]** — cloned `github.com/HKUSTDial/awesome-data-agents`, which
+  ships the full 31-page survey PDF, and read it end to end. This produced the strongest
+  single piece of evidence in the paper: across its 28,688 words, the platform-side
+  vocabulary is absent (throughput 0, queue 0, contention 0, result cache 0, scan 0, fan-out
+  0, retry 0, abandon 0, admission control 0, lakehouse 0, catalog 1 — and that one hit is
+  about agents building semantic catalogs, verified in context). The gap this paper
+  addresses is now **demonstrated** rather than asserted, and
+  `harness/analyse_survey_coverage.py` lets a reviewer recompute the table.
+
+**Still outstanding, and much smaller.** References [2] text-to-Big SQL, [3]
+AgenticDataBench and [4] FDABench are characterized from published abstracts, not full
+texts. Section 2.3 is written to stay strictly within what those abstracts support, and the
+paper's source-status note says so. Read those three before submission and confirm each
+characterization. One concrete item to settle: [4]'s venue reads KDD 2026 in the survey's
+curated list and ICML 2026 in one secondary source.
 
 **Two things that would materially strengthen it, neither blocking:**
 1. **Recalibrate the phase model** against real agent traces. Every parameter currently

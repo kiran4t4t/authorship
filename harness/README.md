@@ -176,6 +176,24 @@ progressively less usable.
 Still in-process: real shared buffer pool and worker pool, but no network shuffle, no
 distributed catalog under load, no cross-node scheduling.
 
+## Reproducing the related-work evidence
+
+Section 2.3 of the paper claims the field's own survey does not discuss platform-side
+concerns. That is a quantitative claim, so it is auditable:
+
+```bash
+pip install pypdf
+git clone --depth 1 https://github.com/HKUSTDial/awesome-data-agents
+python analyse_survey_coverage.py awesome-data-agents/reports/Data_Agents_Survey.pdf
+python analyse_survey_coverage.py .../Data_Agents_Survey.pdf --context catalog
+```
+
+Across 28,688 words: throughput 0, queue 0, contention 0, concurrent execution 0, result
+cache 0, scan 0, fan-out 0, retry 0, abandon 0, admission control 0, lakehouse 0, Iceberg 0,
+catalog 1 — against LLM 178, tool 61, planning 24, memory 15, benchmark 12, accuracy 8. Use
+`--context` to inspect any non-zero count before citing it; a substring match is not a
+discussion of the topic.
+
 ## Layout
 
 ```
@@ -194,6 +212,7 @@ agentlake/
 run_sweep.py        CLI: fleet-size sweep (serial)
 run_mitigations.py  CLI: mitigation ablation
 run_concurrency.py  CLI: fleet-size sweep under real concurrency
+analyse_survey_coverage.py  Recomputes the Section 2.3 term-frequency evidence
 tests/         27 tests, including meaning-preservation of every mutation
 ```
 
