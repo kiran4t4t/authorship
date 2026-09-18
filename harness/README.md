@@ -73,10 +73,11 @@ agent traces is the single highest-value contribution someone could make to it.
 
 Read these before citing any number this harness produces.
 
-- **In-process engine.** DuckDB has no cluster, no shuffle, no shared executor pool
-  and no catalog service under load. Contention effects that would appear on Trino,
-  Spark or a vendor lakehouse **cannot** appear here. The flat scaling result below is
-  evidence about this configuration, not about distributed engines.
+- **In-process engine.** The concurrent driver gives a real shared buffer pool, worker pool
+  and contention, which is what the latency result rests on. It does **not** give network
+  shuffle, a distributed catalog under load, or cross-node scheduling. The latency exponent
+  establishes that contention appears once a shared pool exists; it does not predict the
+  magnitude on Trino or Spark.
 - **Simulated caches.** Hit rates are computed over the real query stream but the
   caches are models, not the engine's own.
 - **Synthetic agents.** No LLM is in the loop. The phase model reproduces the *shape*
@@ -107,11 +108,10 @@ Raw output in `results/`.
    invisible to every accuracy metric.
 3. **Plan-keyed caching closes ~41% of the residual misses** left by exact-text
    caching (93.4% vs 88.8% hit rate). The gap is the correction phase.
-4. **No superlinearity.** Cost per answered question is flat in fleet size from 1 to
-   32 agents (scaling exponent k = -0.026). A negative result: under this
-   configuration, agent cost is additive rather than compounding. Given the in-process
-   limitation above, this should be re-tested on a distributed engine before being
-   generalised.
+4. **Additive in work, superlinear in latency.** Rows scanned per answered question is flat
+   in fleet size from 1 to 32 agents (k = −0.023) under both the serial and the concurrent
+   driver. Mean latency is not: under real concurrent execution it scales as fleet^0.76 and
+   throughput saturates at four agents. See the concurrency sweep above.
 
 ## Mitigation ablation
 
@@ -145,6 +145,37 @@ at all) appeared to make the workload 6% more expensive.
 - **Cache hit rates flatter.** Removing sampling drops the exact-text rate from 89.2%
   to 70.0% — the healthy baseline number is an artifact of repetitive `LIMIT` queries.
 
+## Concurrency sweep
+
+```bash
+python run_concurrency.py --sizes 1,2,4,8,16,32 --turns 192 --threads 4 --memory 512MB
+```
+
+The serial driver measures the work a fleet *creates*. This one measures the contention it
+*causes*: agents run through a thread pool against a shared database with a bounded budget,
+one cursor per thread, so queries genuinely execute in parallel and compete for the buffer
+pool, memory limit and worker threads.
+
+| fleet | scan/question | mean latency | p95 | throughput |
+|---|---|---|---|---|
+| 1 | 998,791 | 3.45 ms | 6.73 ms | 172 q/s |
+| 2 | 925,818 | 3.72 ms | 7.48 ms | 314 q/s |
+| 4 | 869,869 | 5.84 ms | 12.41 ms | **364 q/s** |
+| 8 | 909,145 | 12.32 ms | 21.81 ms | 309 q/s |
+| 16 | 928,427 | 22.61 ms | 39.71 ms | 299 q/s |
+| 32 | 885,560 | 39.45 ms | 67.56 ms | 326 q/s |
+
+Scaling exponents: **scan/question k = −0.023** (flat), **mean latency k = +0.756**,
+**p95 latency k = +0.705**.
+
+The workload is **additive in work but superlinear in latency**. Throughput saturates at
+four concurrent agents; beyond that a fleet adds no work and no throughput, only queue.
+Cost-based monitoring sees linear growth and reports nothing wrong while the agents become
+progressively less usable.
+
+Still in-process: real shared buffer pool and worker pool, but no network shuffle, no
+distributed catalog under load, no cross-node scheduling.
+
 ## Layout
 
 ```
@@ -159,9 +190,11 @@ agentlake/
   fleet.py     Fleet driver
   sweep.py     Fleet-size sweep and scaling exponent
   mitigations.py  Intervention ablation
-run_sweep.py       CLI: fleet-size sweep
-run_mitigations.py CLI: mitigation ablation
-tests/         24 tests, including meaning-preservation of every mutation
+  concurrent.py   Thread-pool driver, per-thread cursors, latency metrics
+run_sweep.py        CLI: fleet-size sweep (serial)
+run_mitigations.py  CLI: mitigation ablation
+run_concurrency.py  CLI: fleet-size sweep under real concurrency
+tests/         27 tests, including meaning-preservation of every mutation
 ```
 
 To target another engine, implement `EngineAdapter`. The `RunReport` contract is

@@ -278,3 +278,51 @@ class TestSweep(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestConcurrentExecution(unittest.TestCase):
+    """The concurrent adapter must stay correct under real parallel execution."""
+
+    def test_per_thread_profiles_are_isolated(self) -> None:
+        from agentlake.concurrent import ConcurrentDuckDBAdapter
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+
+        con = _con()
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = ConcurrentDuckDBAdapter(con, tmp)
+            sql = sqlgen.CORPUS[0].sql
+
+            def go(i: int):
+                return engine.run(
+                    sql, phase=Phase.CANDIDATE, agent_id=i, turn_id=0, delivered=True
+                )
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                stats = list(pool.map(go, range(24)))
+
+        self.assertTrue(all(s.error is None for s in stats))
+        # Identical query on identical data: scan counts must agree, proving
+        # profiles were not cross-contaminated between threads.
+        self.assertEqual(len({s.rows_scanned for s in stats}), 1)
+        self.assertEqual(len({s.plan_key for s in stats}), 1)
+        self.assertTrue(all(s.rows_scanned > 0 for s in stats))
+
+    def test_concurrent_run_matches_serial_work(self) -> None:
+        """Concurrency must change timing, not the work done."""
+        from agentlake.concurrent import concurrency_sweep
+
+        reports = concurrency_sweep(
+            [1, 4], total_turns=16, n_sales=SMALL, seed=11, threads=2
+        )
+        scans = [r.report.scanned_per_question for r in reports]
+        spread = abs(scans[0] - scans[1]) / max(scans)
+        self.assertLess(spread, 0.4, f"work diverged under concurrency: {scans}")
+        self.assertTrue(all(r.makespan_ms > 0 for r in reports))
+        self.assertTrue(all(r.throughput_qps > 0 for r in reports))
+
+    def test_rejects_empty_fleet_sizes(self) -> None:
+        from agentlake.concurrent import concurrency_sweep
+
+        with self.assertRaises(ValueError):
+            concurrency_sweep([], n_sales=SMALL)

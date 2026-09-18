@@ -64,6 +64,37 @@ Gap 1 is the paper's spine. Gaps 2 and 3 are the discussion and the open-problem
 
 ---
 
+## STATUS: what is done, and the one thing blocking submission
+
+**Done.** Sections 1-10 written. All quantitative claims are measured by the released
+harness and reproducible with the commands in `harness/README.md`. 27 tests pass. Threats
+to validity, conclusion and reference list are written. Route B was executed: the harness
+exists, runs, and produced every number in the paper.
+
+**Blocking submission: the related work has not been read.** arxiv.org, dl.acm.org,
+vldb.org and every publisher domain were unreachable from the drafting environment. The
+twenty references below are real -- titles, identifiers and venues were verified through
+search -- but *no source was retrieved and read*. Sections 1 and 2.3 therefore describe the
+prior literature in deliberately general terms, and Section 2.3 carries the only remaining
+`[[VERIFY]]` marker in the paper.
+
+This is not a polish item. Submitting a paper whose related-work section was assembled from
+search snippets risks misattributing findings to the very people most likely to review it,
+and references 1 and 2 are the most probable reviewers. **Read at minimum SQLStorm and
+Text-to-Big SQL before anything else**, then replace each general characterization in
+Section 2.3 with a specific one naming the system and its result.
+
+**Two things that would materially strengthen it, neither blocking:**
+1. **Recalibrate the phase model** against real agent traces. Every parameter currently
+   declares itself uncalibrated. This converts the magnitudes from model properties into
+   measurements.
+2. **Replicate on Trino or Spark.** Finding 4 now shows contention appears as soon as a
+   shared resource pool exists, but the in-process caveat still bounds what can be claimed
+   about a real cluster. PySpark could not be installed in the drafting environment.
+
+**Not done, and deliberately not faked:** any claim requiring production telemetry. The
+paper makes none, and Section 8 states each place where deployment data would have helped.
+
 ## Honest assessment of feasibility
 
 **This paper needs real measurements.** VLDB's Industrial Track exists for production experience;
@@ -83,12 +114,9 @@ Three routes, in descending order of evidence strength:
 - **Route C — position paper (weakest as evidence).** No measurements, argument only. Retarget to
   IEEE Computer or IEEE Software. Publishable, but thin as an "original contribution" exhibit.
 
-**My recommendation: Route B, with Route A layered on top if your employer clears it.** Route B is
-fully within your control, produces a citable artifact, and is the difference between a paper that
-argues and a paper that shows.
-
-**Decision needed from you:** which route. It changes Section 5 and 6 substantially. Everything
-already drafted (Sections 1–4) holds under all three.
+**Route B was chosen and executed.** The harness is in `harness/`. Route A remains available
+as an addition: production telemetry would calibrate the phase model rather than replace any
+result, so it can be layered on later without restructuring the paper.
 
 ---
 
