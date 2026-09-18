@@ -1,7 +1,7 @@
 # The Noisy Neighbour Is a Robot: Characterizing Multi-Agent Workloads on the Open Lakehouse
 
 **Target:** VLDB 2027 Industrial Track (deadline 2 Mar 2027 — verify)
-**Status:** Draft v0.2 — Sections 1–5 drafted with harness results; 6–7 scaffolded
+**Status:** Draft v0.3 — Sections 1–7 drafted with harness results; abstract and conclusion pending
 **Artifact:** `harness/` in this repo (agentlake), 24 tests passing
 **Author:** Kiran Bhusnurmath
 
@@ -348,44 +348,173 @@ To target another engine, implement the `EngineAdapter` interface; the report co
 is unchanged. A distributed adapter is the obvious next contribution, for the reason
 given in Finding 4.
 
-## 6. Mitigations in practice
+## 6. Mitigations
 
-`[[EVIDENCE + draft. Candidate mitigations to cover, each with what it recovered:
+We evaluate five interventions against the reference workload, each expressed as a
+change to the *workload* rather than to the engine, because that is what the harness can
+vary honestly. All runs use the same dataset, fleet size (8), total turns (192), and
+seed; only the named intervention differs. Independent random streams per decision type
+ensure that changing one phase's parameters leaves the others' decisions bit-identical.
+`[[This control matters: an earlier version shared one stream, and disabling discovery --
+which removes no scan work at all -- appeared to make the workload 6% more expensive
+purely by shifting every downstream retry and abandonment decision.]]`
 
-- Semantic-layer / MCP boundary: metric consistency, governance, and the capability cost.
-- Semantic result caching keyed on normalized plan rather than query text — the direct response to
-  the correction-phase finding, if 3.3 confirms it.
-- Phase-aware admission control or rate limiting: treating discovery traffic differently from
-  candidate-generation traffic.
-- Pre-computed schema and profile context, so agents stop rediscovering the same metadata cold.
-  (Related: arXiv:2412.07786 on agentic schema refinement, arXiv:2602.13521 on tribal knowledge —
-  read both.)
-- Cost attribution per agent and per answered question, and what changed once it was visible. This
-  one is often the highest-leverage and least technical intervention; say so if that was your
-  experience.
-- Small-model routing for discovery and sampling phases, reserving frontier models for candidate
-  generation. (arXiv:2506.02153 argues small models suit agentic work generally — read before citing.)
+| Intervention | Scan/question | vs. base | Fan-out | Answered | Question space retained |
+|---|---|---|---|---|---|
+| None (baseline) | 997,219 | — | 4.01 | 165 | 100% |
+| Pinned schema context | 997,219 | 0.0% | 4.01 | 165 | 100% |
+| Cached column profiles | 639,514 | **−35.9%** | 1.68 | 165 | 100% |
+| Tight correction budget | 1,031,613 | **+3.4%** | 4.28 | 149 | 100% |
+| Semantic layer boundary | 665,695 | −33.2% | 1.67 | 164 | **15%** |
+| Semantic layer + budget | 673,400 | −32.5% | 1.70 | 149 | 15% |
 
-For each: what it recovered, what it cost, and what it did not fix. The "did not fix" column is what
-separates an industrial-track paper from a vendor talk.]]`
+### 6.1 Cached column profiles are the single best intervention
+
+Serving cardinality and value distributions from a maintained profile, instead of letting
+each agent sample tables itself, removes 35.9% of rows scanned per answered question and
+collapses fan-out from 4.01 queries to 1.68 -- while answering exactly the same number of
+questions. It is the only intervention we tested that is close to free.
+
+The finding behind it is that sampling, not analytical querying, is where agent workloads
+spend their platform budget. A `SELECT * ... LIMIT 100` looks trivial and is not: it is
+unselective, frequently unpartitioned, and issued on every cold start by every agent. The
+existing benchmark literature does not see this cost at all, because it measures the
+analytical query an agent finally produces.
+
+The capability price is real but modest: profiles go stale, and an agent that cannot
+inspect actual values is weaker on free-text and high-cardinality columns.
+`[[EVIDENCE: if you have deployment experience with a profile/context service, its
+staleness failure modes belong here -- this is the subsection most improved by a
+production anecdote.]]`
+
+### 6.2 Pinned schema context is the right fix for a different problem
+
+Shipping schema and column semantics with the agent eliminates catalog traffic entirely
+-- 1,152 requests to zero -- and changes rows scanned by exactly nothing.
+
+This is worth stating plainly because it is the intervention most often proposed as a
+cost measure, and against a scan-bound platform it saves nothing. It is nevertheless the
+correct intervention for a catalog-bound one, and catalog request volume is precisely
+what a shared REST catalog serving a growing fleet has to absorb. The lesson is that
+"agent platform cost" is not one quantity, and an intervention that helps a metadata
+service may be irrelevant to an execution engine.
+
+### 6.3 Tightening the correction budget is counterproductive
+
+Capping retries at one made the workload **3.4% more expensive per answered question**,
+not cheaper. We expected a saving and found the opposite.
+
+The mechanism is visible in the table: answered questions fall from 165 to 149 while
+fan-out *rises* from 4.01 to 4.28. A capped agent still issues its failed first attempt
+and still pays for it; what the cap removes is the retry that would have converted that
+sunk cost into an answer. Work already spent is not recovered by refusing to finish.
+
+This generalises to a warning about a whole class of mitigation. Interventions that cap,
+throttle or rate-limit agent activity look attractive on a per-query dashboard --
+correction-budget capping does reduce total queries issued -- but the unit of value is an
+answered question, and any intervention evaluated against the wrong denominator can be
+worse than nothing. This is Finding 1 reappearing as an operational trap rather than a
+measurement one.
+
+### 6.4 The semantic layer boundary has a capability cliff
+
+Exposing governed measures and dimensions rather than raw tables removes 33.2% of scan
+cost and all catalog traffic, at a price we can now quantify: **15% of the question space
+remains answerable**. Restricting agents to modelled metrics means questions nobody
+modelled cannot be asked at all.
+
+Two observations follow. First, the saving is slightly *worse* than cached profiles alone
+(−33.2% vs −35.9%) while costing 85% of the question space, so on cost grounds alone the
+semantic layer is not the better trade. Its justification is governance and metric
+consistency -- Section 4.2 -- and it should be argued on those terms rather than as an
+efficiency measure. Second, combining it with a correction budget is worse than either
+sensible intervention alone (−32.5%, 149 answered, 15% answerable), because the
+mitigations compose their costs without composing their benefits.
+
+`[[EVIDENCE: what fraction of real questions your deployment's semantic model actually
+covered, and how that fraction moved over time. Our 15% is a property of our corpus
+construction, not a measurement of any organisation; the shape of the trade-off is the
+transferable result, not the number.]]`
+
+### 6.5 Plan-keyed caching, and why reported hit rates flatter
+
+Keying the result cache on the optimised plan rather than on query text raises the hit
+rate from 89.2% to 93.6% and would avoid 8.0% more scanned rows (135.8M vs 125.7M). We
+report this separately from the table above because it is a different kind of claim: the
+harness simulates both caches as observers over the real query stream and does not skip
+execution on a hit, so these are counterfactual savings, whereas the workload
+interventions genuinely do not run.
+
+The ablation also exposes something about cache metrics themselves. Removing sampling
+traffic drops the exact-text hit rate from 89.2% to 70.0%. The baseline's healthy-looking
+hit rate is substantially an artifact of highly repetitive `SELECT * ... LIMIT` queries;
+on analytical queries alone the cache misses nearly a third of the time. Any agentic
+deployment reporting a cache hit rate over undifferentiated agent traffic is reporting a
+number inflated by its cheapest phase.
+
+### 6.6 What we could not evaluate
+
+Two mitigations we consider promising are outside what this harness can honestly test.
+**Small-model routing** -- serving discovery and sampling from a cheap model and reserving
+a frontier model for candidate generation -- targets inference cost, which we do not
+measure, and our synthetic agents have no model in the loop.
+**Phase-aware admission control** -- scheduling discovery traffic differently from
+analytical traffic -- requires a real scheduler and a real queue; an in-process engine has
+neither. Both are noted in Section 7 rather than claimed here.
 
 ---
 
 ## 7. Open problems
 
-`[[Draft last. Strongest candidates from the analysis above:
+**1. Caching for semantically near-duplicate queries.** Plan keying is an improvement, not
+a solution: it recovers 8.0% more scanned rows and still misses roughly 30% of analytical
+queries once sampling is excluded. Exact-match caching is the wrong primitive for a
+consumer that never phrases the same question the same way twice, and plan-equality is
+merely a less wrong one -- it still misses queries that differ in ways that do not change
+the answer the user needs, such as a slightly wider date range. Cache keys based on
+answer-equivalence rather than plan-equality are an open design problem.
 
-1. Caching and plan reuse under semantically-near-duplicate queries. Exact-match caching is the wrong
-   primitive for this consumer, and nothing has replaced it.
-2. Access control for consumers whose intent is not verifiable from their identity. The semantic layer
-   narrows the surface; the general problem is open.
-3. Benchmarks that measure platform-side aggregate behaviour rather than per-query accuracy. Name
-   what such a benchmark would need to specify.
-4. Cost models and admission control for workloads where the unit of value is an answered question
-   and the unit of cost is an issued query.
-5. Storage layouts for colocated analytical reads and agent-state writes.
+**2. Governance without the capability cliff.** Section 4.2 argues that access control
+assumes a consumer whose intent is inferable from their identity, and that agents break
+that assumption. Section 6.4 shows the cost of the current answer: the semantic layer
+narrows the attack surface at the price of 85% of the question space, and it still does
+not close the exfiltration path, since an injected agent restricted to governed measures
+can compose a sequence of individually legitimate aggregates. What is needed is a control
+that binds data access to *task provenance* rather than to principal identity -- something
+that can distinguish an agent legitimately answering the question it was asked from the
+same agent answering a question that was injected into it. We do not know of a deployed
+system that does this.
 
-Keep it short and specific. A long open-problems section reads as padding.]]`
+**3. Does concurrency bite on a distributed engine?** Finding 4 reports no superlinearity
+from 1 to 32 agents, and the honest caveat is that an in-process engine has no shuffle, no
+shared executor pool and no catalog service under contention. The experiment that would
+settle it is the same sweep against Trino or Spark with a REST catalog under load. A
+confirmation makes the additive-cost result much stronger; a refutation is more
+interesting still, and would relocate the problem from cost-per-question to scheduling.
+
+**4. Cost models where the unit of value is not the unit of cost.** Finding 1 and
+Section 6.3 are the same problem seen twice: an answered question is what an organisation
+buys, an issued query is what it pays for, and the ratio is neither stable nor observable
+from per-query telemetry. Admission control, chargeback, capacity planning and
+autoscaling are all currently built on the wrong denominator. Attributing platform cost to
+a *task* rather than a query, across a fan-out the platform cannot see the boundaries of,
+is unsolved and is a prerequisite for most of the operational tooling this workload needs.
+
+**5. Calibration, and the absence of public traces.** Every phase parameter in this paper
+is a declared assumption. The magnitudes we report are therefore properties of a model,
+and only the structure transfers. There is no public corpus of real multi-agent analytical
+traces, and the ones that exist inside organisations are not shareable in raw form. An
+anonymised, aggregated trace format -- phase-labelled query counts, fan-out distributions,
+correction and abandonment rates, with no SQL text or schema -- would be enough to
+calibrate work like this, and would cost far less to release than a full query log. We
+would rather see that standard than another benchmark.
+
+**6. Storage layouts for colocated agent state.** Section 4.3 describes agent memory,
+checkpoints and traces as an OLTP-shaped write workload landing beside an OLAP-shaped read
+workload. The harness does not model agent writes at all, so we contribute nothing
+empirical here, and it remains the mismatch with the least published work: small frequent
+latency-sensitive writes, analytical reads over the same logical dataset, and a table
+format whose manifest and compaction machinery was designed for neither.
 
 ---
 

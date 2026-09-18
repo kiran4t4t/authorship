@@ -62,6 +62,10 @@ class PhaseModel:
         p_correction: Probability that any given candidate triggers a correction.
         max_corrections: Cap on correction attempts per candidate, modelling an
             agent that gives up rather than retrying forever.
+        p_correction_fails: Probability that a correction attempt is itself
+            wrong. Without this the first retry always succeeds, the cap is
+            never reached, and any mitigation that tightens it is inert by
+            construction.
         p_abandon: Probability that a completed candidate's work is discarded.
         sample_limit: Row limit applied to sampling queries.
         p_explore: Probability that a discovery call inspects a table unrelated
@@ -78,6 +82,7 @@ class PhaseModel:
     n_candidate: int = 1
     p_correction: float = 0.35
     max_corrections: int = 2
+    p_correction_fails: float = 0.30
     p_abandon: float = 0.15
     sample_limit: int = 100
     p_explore: float = 0.25
@@ -88,6 +93,10 @@ class PhaseModel:
             raise ValueError(f"p_correction must be in [0,1], got {self.p_correction}")
         if not 0.0 <= self.p_abandon <= 1.0:
             raise ValueError(f"p_abandon must be in [0,1], got {self.p_abandon}")
+        if not 0.0 <= self.p_correction_fails <= 1.0:
+            raise ValueError(
+                f"p_correction_fails must be in [0,1], got {self.p_correction_fails}"
+            )
         if not 0.0 <= self.p_explore <= 1.0:
             raise ValueError(f"p_explore must be in [0,1], got {self.p_explore}")
         if self.max_corrections < 0:
@@ -108,6 +117,7 @@ HUMAN_BASELINE = PhaseModel(
     n_candidate=1,
     p_correction=0.0,
     max_corrections=0,
+    p_correction_fails=0.0,
     p_abandon=0.0,
     p_explore=0.0,
     provenance="UNCALIBRATED idealisation: one deliberate query, no rediscovery, "

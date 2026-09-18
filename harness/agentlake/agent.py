@@ -55,7 +55,19 @@ class SyntheticAgent:
         self.agent_id = agent_id
         self._engine = engine
         self._model = model
-        self._rng = random.Random(seed * 1_000_003 + agent_id)
+        # Separate RNG streams per decision type. A single shared stream made
+        # the mitigation ablation invalid: disabling discovery stopped
+        # consuming draws, which shifted every downstream correction and
+        # abandonment decision, and a mitigation that removes no scan work at
+        # all appeared to make the workload 6% more expensive. Independent
+        # streams mean changing one phase's parameters leaves the others'
+        # decisions bit-identical.
+        base = seed * 1_000_003 + agent_id
+        self._rng_discovery = random.Random(base + 11)
+        self._rng_sampling = random.Random(base + 22)
+        self._rng_correction = random.Random(base + 33)
+        self._rng_abandon = random.Random(base + 44)
+        self._rng_mutate = random.Random(base + 55)
         self._known_tables: list[str] = []
 
     def _discover(self, question: sqlgen.Question, turn_id: int) -> None:
@@ -78,9 +90,9 @@ class SyntheticAgent:
             if not tables:
                 continue
             self._known_tables = tables
-            explore = self._rng.random() < self._model.p_explore
+            explore = self._rng_discovery.random() < self._model.p_explore
             pool = tables if (explore or not relevant) else relevant
-            self._engine.describe(self._rng.choice(pool))
+            self._engine.describe(self._rng_discovery.choice(pool))
 
     def _sample(self, question: sqlgen.Question, turn_id: int) -> list[QueryStats]:
         """LIMITed reads to learn column semantics. Small, unselective scans."""
@@ -89,7 +101,7 @@ class SyntheticAgent:
         for _ in range(self._model.n_sampling):
             if not targets:
                 break
-            table = self._rng.choice(targets)
+            table = self._rng_sampling.choice(targets)
             sql = f"SELECT * FROM {table} LIMIT {self._model.sample_limit}"
             out.append(
                 self._engine.run(
@@ -115,10 +127,10 @@ class SyntheticAgent:
 
         for _ in range(self._model.n_candidate):
             attempts: list[QueryStats] = []
-            failed_first = self._rng.random() < self._model.p_correction
+            failed_first = self._rng_correction.random() < self._model.p_correction
 
             if failed_first:
-                broken = sqlgen.break_query(question.sql, self._rng)
+                broken = sqlgen.break_query(question.sql, self._rng_correction)
                 attempts.append(
                     self._engine.run(
                         broken,
@@ -129,9 +141,20 @@ class SyntheticAgent:
                     )
                 )
                 for _ in range(self._model.max_corrections):
-                    variant = sqlgen.mutate(question.sql, self._rng)
+                    # A correction is not guaranteed to work. Modelling every
+                    # retry as succeeding first time made the correction-budget
+                    # mitigation inert by construction: the second attempt was
+                    # never reached, so capping it changed nothing.
+                    retry_fails = (
+                        self._rng_correction.random() < self._model.p_correction_fails
+                    )
+                    sql = (
+                        sqlgen.break_query(question.sql, self._rng_correction)
+                        if retry_fails
+                        else sqlgen.mutate(question.sql, self._rng_mutate)
+                    )
                     stat = self._engine.run(
-                        variant,
+                        sql,
                         phase=Phase.CORRECTION,
                         agent_id=self.agent_id,
                         turn_id=turn_id,
@@ -152,7 +175,7 @@ class SyntheticAgent:
                 )
 
             succeeded = [s for s in attempts if s.error is None]
-            abandoned = self._rng.random() < self._model.p_abandon
+            abandoned = self._rng_abandon.random() < self._model.p_abandon
             if succeeded and not abandoned:
                 final = succeeded[-1]
                 idx = attempts.index(final)
