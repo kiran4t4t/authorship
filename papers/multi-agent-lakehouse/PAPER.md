@@ -23,34 +23,32 @@
 
 ## Abstract
 
-Analytical data platforms were designed for a consumer that no longer dominates their
-workload. A human analyst issues a small number of deliberate queries, reuses saved
-logic, and stops when an answer looks right. An LLM agent does none of these things: it
-discovers schemas by sampling, generates several semantically equivalent candidates for a
-single question, retries on error, and abandons partial work when a plan changes.
-Enterprises are now pointing fleets of such agents at a shared open lakehouse.
+Analytical platforms were designed for a consumer that no longer dominates their workload.
+A human analyst issues few, deliberate queries and reuses saved logic. An LLM agent discovers
+schemas by sampling, generates several equivalent candidates per question, retries on error,
+and abandons partial work when a plan changes -- and enterprises now point fleets of them at a
+shared lakehouse.
 
-Existing work evaluates this consumer one agent and one question at a time, asking
-whether the generated SQL is correct and, more recently, whether it is efficient. We ask
-what happens to the platform when many agents share it. We present `agentlake`, an open
-harness that drives a configurable agent fleet against an Iceberg-style lakehouse and
-instruments the platform rather than the answer, and we report a characterization of
-multi-agent analytical traffic from it.
+The evaluation literature has followed the agent, not the platform. Data-agent benchmarks
+decompose an agent's own latency and tokens by phase, including retries, and recent
+text-to-SQL work shows execution overtaking agent interaction as a dataset grows. All of it
+accounts for what one agent spends on one task. We hold the data fixed, grow the *fleet*, and
+account for what the *platform* spends. We present `agentlake`, an open harness that drives a
+configurable agent fleet against a lakehouse under test and instruments rows scanned, cache
+behaviour, catalog traffic and contention rather than answer accuracy.
 
-Three results. First, per-query monitoring inverts the sign of the cost result: agent
-queries scan 32% fewer rows each than a human-analyst control while costing 2.58x more
-per answered question, so the instrumentation most organizations already have reports an
-improvement where there is a regression. Second, the workload is additive in work but
-superlinear in latency: under real concurrent execution against a fixed resource budget,
-rows scanned per answered question is flat in fleet size (k = -0.02) while mean query
-latency scales as fleet^0.76 and throughput saturates at four concurrent agents. Third, in
-a controlled ablation of five mitigations, the intervention that helps most is the one
-least discussed -- serving cached column profiles instead of letting agents sample tables
-removes 35.9% of scan cost at no loss of answered questions -- while tightening correction
-budgets, a common throttling reflex, makes cost per answered question 3.4% *worse*.
+Three results. Per-query monitoring inverts the sign of the cost result: agent queries scan
+32% fewer rows each than a human-analyst control while the workload costs 2.58x more per
+answered question, so existing instrumentation reports an improvement where there is a
+regression. The workload is additive in work but superlinear in latency: rows scanned per
+answered question is flat in fleet size (k = -0.02) while mean latency scales as fleet^0.76
+and throughput saturates at four concurrent agents. And in an ablation of five mitigations,
+the one that helps most is the least discussed -- cached column profiles remove 35.9% of scan
+cost with no loss of answers -- while tightening correction budgets, a common throttling
+reflex, makes cost per answered question 3.4% *worse*.
 
-We release the harness, including the negative results and the three methodological
-artifacts we had to correct to obtain them.
+We release the harness, with the negative results and the methodological artifacts we
+corrected to obtain them.
 
 ## 1. Introduction
 
@@ -835,38 +833,53 @@ Section 6.6 notes the mitigation we consequently could not evaluate.
 
 ## 9. Conclusion
 
-Analytical platforms are being asked to serve a consumer they were not designed for, and
-the first problem is not that the consumer is expensive. It is that the instruments do not
-report it as expensive. Agent queries scan fewer rows each than the human workload they
-displace, while the workload as a whole costs more than twice as much per question
-answered; a per-query dashboard shows an improvement throughout. Everything downstream of
-that -- capacity planning, chargeback, throttling policy -- is being decided on the wrong
+Analytical platforms are being asked to serve a consumer they were not designed for, and the
+first problem is not that the consumer is expensive. It is that the instruments do not report
+it as expensive. Agent queries scan fewer rows each than the human workload they displace,
+while the workload as a whole costs more than twice as much per question answered; a
+per-query dashboard shows an improvement throughout. Everything downstream of that --
+capacity planning, chargeback, throttling policy -- is being decided on the wrong
 denominator, and Section 6.3 shows a common throttling reflex making things actively worse
 for exactly that reason.
 
-The second result is that this workload scales in two different ways at once. Rows scanned
-per answered question is flat in fleet size; mean query latency scales as fleet^0.76 and
-throughput saturates at four concurrent agents. An organisation watching cost will see
-linear growth and conclude nothing is wrong, while the agents themselves become
-progressively less usable. These are not competing measurements of one phenomenon. They are
-two phenomena, and they want different interventions -- a budget and an admission controller.
+The second result is that this workload scales in two ways at once. Rows scanned per answered
+question is flat in fleet size; mean query latency scales as fleet^0.76 and throughput
+saturates at four concurrent agents. An organisation watching cost will see linear growth and
+conclude nothing is wrong, while the agents themselves become progressively less usable.
+These are not competing measurements of one phenomenon. They are two phenomena, and they want
+different interventions -- a budget and an admission controller. Read alongside the
+text-to-Big SQL result that execution overtakes agent interaction as data grows, the picture
+is that the execution side becomes the binding constraint along two independent axes: data
+volume, and how many agents share the engine.
 
 The third is that the mitigation which helps most is the one least discussed. Serving cached
 column profiles instead of letting each agent sample tables for itself removes 35.9% of scan
 cost at no cost in answered questions, because sampling -- not analytical querying -- is where
 this workload actually spends the platform. The interventions that receive more attention do
-less: pinned schema context saves no scan work at all, and the semantic-layer boundary buys
-a comparable saving at the price of 85% of the question space, which is a reason to argue
-for it on governance grounds rather than efficiency ones.
+less: pinned schema context saves no scan work at all, and the semantic-layer boundary buys a
+comparable saving at the price of 85% of the question space, which is a reason to argue for it
+on governance grounds rather than efficiency ones.
 
-We have tried to be as careful about what we did not establish as about what we did. Three
-of the results in this paper are the corrected versions of artifacts we initially mistook
-for findings: a spurious negative scaling exponent produced by letting total work grow with
-fleet size, a plan fingerprint coarse enough to collide distinct questions and inflate its
-own cache hit rate, and a shared random stream that made an intervention removing no work
-appear to cost 6%. Each was caught by the harness rather than by inspection, which is the
-argument for releasing it. We expect it to catch things we have not thought of, including
-in our own results.
+None of this competes with the agent-side literature, and we want to be precise about the
+relationship rather than claim more territory than we hold. FDABench already decomposes an
+agent's latency and tokens into decision, execute, retry and generate phases; that is the same
+shape of accounting we apply, pointed at the other side of the interface. The two belong
+together. An organisation that knows what its agents spend and what its platform spends can
+reason about the whole cost of an answered question; today it can usually see neither, and the
+half that is easier to instrument is the half that misleads.
+
+We have tried to be as careful about what we did not establish as about what we did. Three of
+the results here are corrected versions of artifacts we first mistook for findings: a spurious
+negative scaling exponent produced by letting total work grow with fleet size, a plan
+fingerprint coarse enough to collide distinct questions and inflate its own cache hit rate,
+and a shared random stream that made an intervention removing no work appear to cost 6%. Two
+further corrections were to our reading of other people's work, and surfaced only when we
+stopped working from abstracts and read the released artifacts: we had described an
+engine-benchmarking system as an agent-accuracy benchmark, and had overlooked the phase
+instrumentation that makes FDABench the closest existing relative of our taxonomy. Each of the
+first three was caught by the harness rather than by inspection, which is the argument for
+releasing it; the last two are the argument for reading the code that ships with a paper. We
+expect both to catch things we have not thought of, including in our own results.
 
 ---
 
