@@ -1,0 +1,126 @@
+{
+  "scaling_exponent": 0.0,
+  "provenance": "UNCALIBRATED idealisation: one deliberate query, no rediscovery, no retry storm. The control condition, not a claim about real analysts.",
+  "points": [
+    {
+      "fleet_size": 1,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    },
+    {
+      "fleet_size": 2,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    },
+    {
+      "fleet_size": 4,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    },
+    {
+      "fleet_size": 8,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    },
+    {
+      "fleet_size": 16,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    },
+    {
+      "fleet_size": 32,
+      "questions_answered": 192,
+      "queries_issued": 192,
+      "queries_per_question": 1.0,
+      "scanned_per_question": 375730.9166666667,
+      "scanned_per_query": 375730.9166666667,
+      "waste_fraction": 0.0,
+      "abandoned_fraction": 0.0,
+      "text_cache_hit_rate": 0.828125,
+      "plan_cache_hit_rate": 0.828125,
+      "catalog_requests": 0,
+      "catalog_skew": 0.0,
+      "by_phase": {
+        "candidate": 192
+      },
+      "scanned_by_phase": {
+        "candidate": 72140336
+      }
+    }
+  ]
+}

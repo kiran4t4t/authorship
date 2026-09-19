@@ -1,0 +1,11 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtualenvs
+.venv/
+venv/
+
+# Harness scratch output (results/*.json are committed deliberately)
+harness/db/
+harness/data/

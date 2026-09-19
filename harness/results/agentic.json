@@ -1,0 +1,150 @@
+{
+  "scaling_exponent": -0.026210603364791484,
+  "provenance": "UNCALIBRATED defaults - not measured, see phases.py docstring",
+  "points": [
+    {
+      "fleet_size": 1,
+      "questions_answered": 165,
+      "queries_issued": 629,
+      "queries_per_question": 3.812121212121212,
+      "scanned_per_question": 969864.6787878788,
+      "scanned_per_query": 254416.01271860095,
+      "waste_fraction": 0.6073160521887739,
+      "abandoned_fraction": 0.0757470370499422,
+      "text_cache_hit_rate": 0.8875432525951558,
+      "plan_cache_hit_rate": 0.9342560553633218,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.2666666666666666,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 53
+      },
+      "scanned_by_phase": {
+        "sampling": 75365496,
+        "candidate": 63742534,
+        "correction": 20919642
+      }
+    },
+    {
+      "fleet_size": 2,
+      "questions_answered": 160,
+      "queries_issued": 643,
+      "queries_per_question": 4.01875,
+      "scanned_per_question": 1000582.075,
+      "scanned_per_query": 248978.43234836703,
+      "waste_fraction": 0.6201066389281459,
+      "abandoned_fraction": 0.08595902789883579,
+      "text_cache_hit_rate": 0.8806228373702422,
+      "plan_cache_hit_rate": 0.9342560553633218,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.2680555555555555,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 67
+      },
+      "scanned_by_phase": {
+        "sampling": 76180252,
+        "candidate": 58937470,
+        "correction": 24975410
+      }
+    },
+    {
+      "fleet_size": 4,
+      "questions_answered": 166,
+      "queries_issued": 651,
+      "queries_per_question": 3.9216867469879517,
+      "scanned_per_question": 966668.3012048192,
+      "scanned_per_query": 246492.99231950846,
+      "waste_fraction": 0.6058514682943598,
+      "abandoned_fraction": 0.06049764593875406,
+      "text_cache_hit_rate": 0.8890814558058926,
+      "plan_cache_hit_rate": 0.9341421143847487,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.2826388888888889,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 75
+      },
+      "scanned_by_phase": {
+        "sampling": 73361828,
+        "candidate": 58924000,
+        "correction": 28181110
+      }
+    },
+    {
+      "fleet_size": 8,
+      "questions_answered": 168,
+      "queries_issued": 637,
+      "queries_per_question": 3.7916666666666665,
+      "scanned_per_question": 933711.9404761905,
+      "scanned_per_query": 246253.69858712715,
+      "waste_fraction": 0.5992312965188369,
+      "abandoned_fraction": 0.0668507901061512,
+      "text_cache_hit_rate": 0.8929188255613126,
+      "plan_cache_hit_rate": 0.9343696027633851,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.28055555555555567,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 61
+      },
+      "scanned_by_phase": {
+        "sampling": 72969660,
+        "candidate": 60123362,
+        "correction": 23770584
+      }
+    },
+    {
+      "fleet_size": 16,
+      "questions_answered": 166,
+      "queries_issued": 642,
+      "queries_per_question": 3.8674698795180724,
+      "scanned_per_question": 935586.9036144578,
+      "scanned_per_query": 241911.8785046729,
+      "waste_fraction": 0.6002606855386297,
+      "abandoned_fraction": 0.06742206905161122,
+      "text_cache_hit_rate": 0.8877374784110535,
+      "plan_cache_hit_rate": 0.9343696027633851,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.2708333333333335,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 66
+      },
+      "scanned_by_phase": {
+        "sampling": 71802820,
+        "candidate": 58908886,
+        "correction": 24595720
+      }
+    },
+    {
+      "fleet_size": 32,
+      "questions_answered": 170,
+      "queries_issued": 646,
+      "queries_per_question": 3.8,
+      "scanned_per_question": 895352.3176470589,
+      "scanned_per_query": 235619.03095975233,
+      "waste_fraction": 0.5764570994313943,
+      "abandoned_fraction": 0.050492276145990875,
+      "text_cache_hit_rate": 0.8773747841105354,
+      "plan_cache_hit_rate": 0.9343696027633851,
+      "catalog_requests": 1152,
+      "catalog_skew": 0.307638888888889,
+      "by_phase": {
+        "sampling": 384,
+        "candidate": 192,
+        "correction": 70
+      },
+      "scanned_by_phase": {
+        "sampling": 69065688,
+        "candidate": 56557388,
+        "correction": 26586818
+      }
+    }
+  ]
+}
