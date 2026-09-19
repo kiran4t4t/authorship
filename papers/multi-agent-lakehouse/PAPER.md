@@ -98,18 +98,19 @@ That gap is the subject of this paper. Our contributions:
 
 1. **A workload characterization of multi-agent analytical traffic** against an open Iceberg
    lakehouse, along platform-side axes that the accuracy-oriented literature does not instrument:
-   scan amplification, cache behaviour, catalog metadata request distribution, small-file and
-   manifest pressure, and cost per *answered question* rather than per *issued query*
-   (Sections 3 and 5).
+   scan amplification, cache behaviour under near-duplicate queries, catalog request
+   distribution, and cost per *answered question* rather than per *issued query* (Section 3).
 2. **A taxonomy of agent-originated query traffic** that separates the phases of an agent's turn —
-   discovery, sampling, candidate generation, correction, and abandonment — and shows that these
-   phases have sharply different platform cost profiles, which matters because they are conventionally
-   measured as one undifferentiated workload (Section 3).
+   discovery, sampling, candidate generation and correction, with abandonment as a disposition
+   orthogonal to phase — and shows that these phases have sharply different platform cost
+   profiles, which matters because they are conventionally measured as one undifferentiated
+   workload (Section 3.1).
 3. **An account of three structural mismatches** between lakehouse design assumptions and agentic
    consumption: workload shape, governance under non-deterministic consumers, and colocated agent
    write state (Section 4).
-4. **Deployed mitigations and what they actually recover**, including the semantic layer as an
-   enforcement boundary rather than merely a convenience layer (Section 6).
+4. **A controlled ablation of five mitigations**, measuring what each recovers and what it
+   costs in capability — including the finding that the most-discussed intervention saves no
+   scan work and that a common throttling reflex is counterproductive (Section 6).
 5. **`agentlake`, an open harness** for reproducing multi-agent platform load, released with
    this paper (Section 5). It runs in-process with no cluster, API key or network access, so
    every number reported here is reproducible on a laptop.
@@ -152,6 +153,9 @@ recur.
 evaluated against who is asking. The implicit premise is that a principal's plausible
 access pattern is bounded by their role, so unusual access is detectable as an anomaly.
 
+Field accounts of how lakehouses and data lakes actually behave in practice [10]-[12] make
+clear that these assumptions were already under strain before agents arrived.
+
 Each of these holds for a consumer that is deliberate, repetitive and auditable. Section 4
 argues that agent fleets are none of those, and Section 3 measures what that costs.
 
@@ -180,7 +184,9 @@ field rather than a research programme. Pointing an agent at raw tables makes it
 joins, grain and metric definitions on every prompt, which produces inconsistent answers
 to the same question across runs. The response converging in practice is to stop exposing
 tables and expose a governed semantic model instead -- measures and dimensions with
-declared definitions -- which the agent introspects and calls through a protocol layer.
+declared definitions -- which the agent introspects and calls through a protocol layer; work on natural-language access to Iceberg
+tables via LLM agents [13] and on agent communication protocols [19] describes the same
+interface from the agent's side.
 That several independent vendors arrived at the same shape within roughly a year is a
 signal about the inadequacy of the raw-table interface, not an endorsement of any
 particular implementation. Section 4.2 examines what that boundary does and does not
@@ -207,7 +213,7 @@ an explicit rewriting pass for cross-engine compatibility; dialect bias is a pro
 this consumer that a platform serving several engines will meet.
 
 **Evaluations of text-to-SQL translation.** A large literature scores whether generated SQL
-is correct. The most relevant recent development is a move past binary correctness:
+is correct [5]-[9]. The most relevant recent development is a move past binary correctness:
 text-to-Big SQL [2] argues that a 0/1 label is the wrong instrument at scale, since an
 unnecessarily projected column is not equivalent to a wrong answer when re-running the
 query is expensive, and proposes metrics that account jointly for partial correctness and
@@ -299,26 +305,38 @@ accuracy result and no text-to-SQL technique. We measure the platform.
 
 ### 3.1 A phase taxonomy of the agent turn
 
-We decompose a single agent turn into five phases, each with a distinct platform cost signature:
+We decompose a single agent turn into four phases, each with a distinct platform cost
+signature, plus one disposition that can apply to any of them:
 
 | Phase | What the agent is doing | Platform cost signature |
 |---|---|---|
 | **Discovery** | Enumerating namespaces, tables, schemas | Catalog metadata requests; negligible scan; high request count, low bytes |
 | **Sampling** | `LIMIT`ed reads to learn column semantics, cardinality, value distributions | Small scans, poor selectivity, frequently unpartitioned; high file-open count relative to bytes returned |
-| **Candidate generation** | Issuing one or more full analytical queries | The only phase resembling a conventional BI workload — and the only one existing benchmarks measure |
+| **Candidate generation** | Issuing one or more full analytical queries | The only phase resembling a conventional BI workload |
 | **Correction** | Re-issuing after an error, an empty result, or a failed self-check | Near-duplicate of the prior query; defeats exact-match result caching while duplicating nearly all of its work |
-| **Abandonment** | Work discarded when the plan changes or the turn is cut short | Full cost incurred, zero value delivered; invisible to any accuracy metric |
 
-The taxonomy matters because these phases are conventionally aggregated into one number — "agent query
-volume" — and that number misleads in both directions. Discovery and sampling are cheap in bytes but
-expensive in request count, which is exactly the load profile that stresses a catalog rather than an
-engine. Correction and abandonment are expensive in bytes and invisible to accuracy metrics, so a
-system that scores well on a text-to-SQL benchmark can be ruinous in production.
+**Abandonment is a disposition, not a phase.** Our first model treated it as a fifth phase,
+and implementing it showed why that is wrong: a discovery query and a candidate query can both
+be abandoned, so relabelling abandoned work as "abandoned" destroyed the per-phase cost
+attribution the taxonomy exists to provide. Abandonment is therefore carried as a flag
+orthogonal to phase, and abandoned work retains the phase that produced it. We report the
+correction because the distinction is easy to miss on paper and unavoidable in code.
 
-In the reference configuration of Section 3.3, sampling accounts for the largest share of
-rows scanned despite being the phase that looks cheapest per query, and abandonment for
-7.6%. Both figures are properties of our phase model rather than of any deployment; what
-transfers is the ordering, not the magnitude.
+The taxonomy matters because these phases are conventionally aggregated into one number --
+"agent query volume" -- and that number misleads in both directions. Discovery and sampling
+are cheap in bytes but expensive in request count, which is the load profile that stresses a
+catalog rather than an engine. Correction and abandoned work are expensive in bytes and
+invisible to metrics computed on the final answer.
+
+The closest existing construct is FDABench's decomposition of *agent* latency and tokens into
+decision, execute, retry and generate phases (Section 2.3). The phases are recognisably
+similar; what differs is the quantity attributed to them. FDABench asks how long the agent
+spent in each; we ask what each cost the engine underneath.
+
+In the reference configuration of Section 3.3, sampling accounts for the largest share of rows
+scanned despite being the phase that looks cheapest per query, and abandoned work for 7.6%.
+Both figures are properties of our phase model rather than of any deployment; what transfers
+is the ordering, not the magnitude.
 
 ### 3.2 Measurement methodology
 
@@ -392,10 +410,11 @@ practically consequential result, because it means the instrumentation most
 organizations already have will mislead them in the reassuring direction.
 
 **Finding 2: roughly 60% of scanned rows never reach a user.** Sampling, superseded
-corrections and abandoned turns account for the majority of platform work. Abandonment
-alone is about 7.6% — and abandoned work is invisible to every accuracy metric in the
-existing literature, because a benchmark that scores the final answer cannot see what
-was discarded on the way to it.
+corrections and abandoned turns account for the majority of platform work. Abandoned work
+alone accounts for about 7.6%, and it is invisible to any metric computed on the final
+answer, because a benchmark that scores the answer cannot see what was discarded on the way
+to it. An agent-side phase accounting such as FDABench's would see the *time* such work took;
+what neither sees without platform instrumentation is the scan it caused.
 
 **Finding 3: plan-keyed caching closes about 41% of the residual misses** left by
 exact-text caching (93.4% vs 88.8% hit rate). The gap is the correction phase: rewrites
@@ -550,7 +569,8 @@ columnar files.
 This is the OLTP/OLAP divide arriving through a new door. It has a settled answer in
 conventional architectures, which is to run separate systems and accept the seam. What is
 different here is that the two workloads now belong to the *same* logical application,
-operate over overlapping data, and must agree: an agent whose checkpoint says it has
+operate over overlapping data, and must agree -- a tension also visible in federated
+enterprise data-platform architectures [12]: an agent whose checkpoint says it has
 processed a partition needs that claim to be consistent with what the analytical side
 believes.
 
@@ -600,7 +620,9 @@ Section 7.
 We evaluate five interventions against the reference workload, each expressed as a
 change to the *workload* rather than to the engine, because that is what the harness can
 vary honestly. All runs use the same dataset, fleet size (8), total turns (192), and
-seed; only the named intervention differs. Independent random streams per decision type
+seed; only the named intervention differs. The baseline here is therefore a different
+configuration from the fleet-size sweep of Section 3.3 and the concurrency sweep of Finding
+4, and its absolute scan figure differs accordingly; comparisons are within this table. Independent random streams per decision type
 ensure that changing one phase's parameters leaves the others' decisions bit-identical.
 This control matters more than it sounds: an earlier version shared one stream, and
 disabling discovery -- which removes no scan work at all -- appeared to make the workload 6%
@@ -635,7 +657,9 @@ the most obvious place where deployment experience would extend this result.
 
 ### 6.2 Pinned schema context is the right fix for a different problem
 
-Shipping schema and column semantics with the agent eliminates catalog traffic entirely
+Shipping schema and column semantics with the agent -- the direction pursued by work on
+agentic schema refinement [14] and on supplying agents with an organisation's tribal
+knowledge [15] -- eliminates catalog traffic entirely
 -- 1,152 requests to zero -- and changes rows scanned by exactly nothing.
 
 This is worth stating plainly because it is the intervention most often proposed as a
@@ -702,7 +726,7 @@ number inflated by its cheapest phase.
 ### 6.6 What we could not evaluate
 
 Two mitigations we consider promising are outside what this harness can honestly test.
-**Small-model routing** -- serving discovery and sampling from a cheap model and reserving
+**Small-model routing** [20] -- serving discovery and sampling from a cheap model and reserving
 a frontier model for candidate generation -- targets inference cost, which we do not
 measure, and our synthetic agents have no model in the loop.
 **Phase-aware admission control** -- scheduling discovery traffic differently from
@@ -739,7 +763,9 @@ fleet^0.76 and throughput saturates at four agents. What we cannot say is where 
 sits on a real cluster. A distributed engine adds contention points we do not model -- a
 REST catalog serving metadata to the whole fleet, shuffle competing for network, a
 scheduler making cross-node placement decisions -- and removes others by adding capacity.
-The experiment is the same sweep against Trino or Spark with a catalog under load. We would
+The experiment is the same sweep against Trino or Spark with a catalog under load. Work on
+scheduling and serving agentic LLM workloads [16]-[18] addresses the inference side of the
+same deployment and would compose with it. We would
 expect the exponent to be worse and the saturation point to be higher, and we would not bet
 much on either.
 

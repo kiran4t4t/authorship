@@ -194,6 +194,17 @@ catalog 1 — against LLM 178, tool 61, planning 24, memory 15, benchmark 12, ac
 `--context` to inspect any non-zero count before citing it; a substring match is not a
 discussion of the topic.
 
+## Paper consistency check
+
+```bash
+python check_paper.py ../papers/multi-agent-lakehouse/PAPER.md
+```
+
+Verifies section numbering, citation closure (every reference cited, every citation
+defined), cross-reference validity, abstract length, absence of drafting markers, and every
+headline figure against the JSON in `results/`. Run it before any submission — it fails if a
+number in the paper has drifted from what the harness produced.
+
 ## Layout
 
 ```
@@ -213,6 +224,7 @@ run_sweep.py        CLI: fleet-size sweep (serial)
 run_mitigations.py  CLI: mitigation ablation
 run_concurrency.py  CLI: fleet-size sweep under real concurrency
 analyse_survey_coverage.py  Recomputes the Section 2.3 term-frequency evidence
+check_paper.py              Consistency check: paper vs harness results
 tests/         27 tests, including meaning-preservation of every mutation
 ```
 
