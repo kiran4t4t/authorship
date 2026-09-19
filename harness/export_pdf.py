@@ -108,7 +108,41 @@ strong { font-weight: 700; }
 .refs li { margin-bottom: 0.42em; text-align: left; }
 """
 
+TWO_COL_CSS = """
+@page { margin: 18mm 16mm 16mm 16mm; }
+html { font-size: 9pt; }
+body { line-height: 1.28; }
+
+/* The title block and the source-status note run the full measure; the rest
+   flows in two columns, as the venue's own template does. */
+/* WeasyPrint has no `column-span: all`; full-width blocks are lifted out of the
+   column flow structurally instead (see _split_flow). */
+h1, .titlemeta { margin-left: 0; margin-right: 0; }
+table.fullwidth { width: 100%; }
+blockquote.fullwidth { margin-left: 0; margin-right: 0; }
+h1 { font-size: 16pt; margin-bottom: 0.45em; }
+.titlemeta { font-size: 8.5pt; margin-bottom: 0.9em; }
+.flow { column-count: 2; column-gap: 6.5mm; column-fill: auto; }
+
+h2 { font-size: 10.5pt; margin: 1.35em 0 0.4em; }
+h3 { font-size: 9.5pt; margin: 1.05em 0 0.3em; }
+p { margin: 0 0 0.48em; }
+
+/* Narrow measure: tables and code shrink, wide tables span both columns. */
+table { font-size: 7.6pt; margin: 0.7em 0 0.85em; }
+th { padding: 3.5pt 4pt; }
+td { padding: 3pt 4pt; }
+table.fullwidth { font-size: 8.2pt; }
+pre { font-size: 7.4pt; padding: 6pt 7pt; }
+code { font-size: 0.85em; }
+blockquote { font-size: 8.2pt; padding: 0.6em 0.8em; margin: 0.8em 0; }
+.refs { font-size: 7.8pt; }
+ol, ul { padding-left: 1.25em; }
+"""
+
 _NUM = re.compile(r"^[\s]*[−\-+]?[\d,]+(\.\d+)?\s*(%|x|ms|q/s|GB)?\s*$")
+WIDE_COLS = 5
+WIDE_CELL_CHARS = 60
 
 
 def _typographic(md: str) -> str:
@@ -136,6 +170,56 @@ def _mark_numeric_cells(html: str) -> str:
         return m.group(0)
 
     return re.sub(r"<(td|th)([^>]*)>(.*?)</\1>", fix, html, flags=re.S)
+
+
+def _mark_wide_tables(html: str) -> str:
+    """Mark tables that cannot survive a narrow column so they span both.
+
+    A table spans if it has many columns or any long prose cell. In a
+    single-column render the class is inert; in two-column it maps to
+    `column-span: all`, the CSS equivalent of LaTeX's table* environment.
+    """
+
+    def fix(m: re.Match) -> str:
+        table = m.group(0)
+        header = re.search(r"<tr>(.*?)</tr>", table, re.S)
+        ncols = len(re.findall(r"<th", header.group(1))) if header else 0
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", table, re.S)
+        longest = max((len(re.sub(r"<[^>]+>", "", c).strip()) for c in cells), default=0)
+        if ncols >= WIDE_COLS or longest > WIDE_CELL_CHARS:
+            return table.replace("<table>", '<table class="fullwidth">', 1)
+        return table
+
+    return re.sub(r"<table>.*?</table>", fix, html, flags=re.S)
+
+
+_FULLWIDTH_BLOCK = re.compile(
+    r'<(table|blockquote) class="fullwidth">.*?</\1>', re.S
+)
+
+
+def _split_flow(body_html: str) -> str:
+    """Interleave two-column flow sections with full-width blocks.
+
+    WeasyPrint does not implement `column-span: all`, so a wide table placed
+    inside a multi-column container is squeezed to column width rather than
+    spanning. We therefore break the flow structurally: each run of ordinary
+    content becomes its own two-column section, and each wide block sits between
+    those sections at full measure. This is the same effect LaTeX gets from
+    `table*`, at the cost of the columns re-balancing at every break.
+    """
+    out: list[str] = []
+    pos = 0
+    for m in _FULLWIDTH_BLOCK.finditer(body_html):
+        chunk = body_html[pos : m.start()].strip()
+        if chunk:
+            out.append(f'<div class="flow">{chunk}</div>')
+        out.append(m.group(0))
+        pos = m.end()
+    tail = body_html[pos:].strip()
+    if tail:
+        out.append(f'<div class="flow">{tail}</div>')
+    return "".join(out)
 
 
 def build_html(md_text: str) -> str:
@@ -170,12 +254,15 @@ def build_html(md_text: str) -> str:
         body_html = f"{head}<h2>10. References</h2><div class=\"refs\">{tail}</div>"
 
     body_html = _mark_numeric_cells(body_html)
+    body_html = _mark_wide_tables(body_html)
+    # The source-status note is too wide to read in a column.
+    body_html = body_html.replace("<blockquote>", '<blockquote class="fullwidth">', 1)
 
     return (
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
         f"<title>{title}</title></head><body>"
         f"<h1>{title}</h1><div class='titlemeta'>{meta_html}</div>"
-        f"{body_html}</body></html>"
+        f"{_split_flow(body_html)}</body></html>"
     )
 
 
@@ -184,6 +271,11 @@ def main() -> None:
     ap.add_argument("paper", type=pathlib.Path)
     ap.add_argument("-o", "--out", type=pathlib.Path, required=True)
     ap.add_argument("--html", type=pathlib.Path, help="also write the intermediate HTML")
+    ap.add_argument(
+        "--columns", type=int, choices=(1, 2), default=1,
+        help="1 = single-column reading copy (default), 2 = two-column, closer to "
+             "the venue's geometry but NOT the official template",
+    )
     args = ap.parse_args()
 
     if not args.paper.exists():
@@ -198,7 +290,10 @@ def main() -> None:
     if args.html:
         args.html.write_text(html)
 
-    HTML(string=html).write_pdf(args.out, stylesheets=[WCSS(string=CSS)])
+    sheets = [WCSS(string=CSS)]
+    if args.columns == 2:
+        sheets.append(WCSS(string=TWO_COL_CSS))
+    HTML(string=html).write_pdf(args.out, stylesheets=sheets)
     print(f"wrote {args.out} ({args.out.stat().st_size:,} bytes)")
 
 

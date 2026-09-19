@@ -212,10 +212,24 @@ pip install markdown weasyprint
 python export_pdf.py ../papers/multi-agent-lakehouse/PAPER.md -o paper.pdf
 ```
 
-Single-column working draft on US Letter: Bitstream Charter, justified with hyphenation,
-numeric table columns right-aligned, running page numbers. Intended for circulation and
-review. A camera-ready submission needs the venue's own two-column template — VLDB ships
-LaTeX and Word styles — so treat this as the reading copy, not the submission artifact.
+```bash
+python export_pdf.py ../papers/multi-agent-lakehouse/PAPER.md -o paper-2col.pdf --columns 2
+```
+
+Two renderings from one source. `--columns 1` (default) is the single-column reading copy:
+Bitstream Charter on US Letter, justified with hyphenation, numeric table columns
+right-aligned, running page numbers — 19 pages. `--columns 2` approximates a conference
+two-column geometry — 12 pages.
+
+Wide tables are detected (five or more columns, or any cell over 60 characters) and lifted
+out of the column flow so they run the full measure, as LaTeX's `table*` does. This is done
+structurally rather than with `column-span: all`, which WeasyPrint does not implement — set
+on a table inside a multi-column container it is silently ignored and the table is squeezed
+to column width instead.
+
+**Neither output is a submission artifact.** A camera-ready paper needs the venue's own
+template (PVLDB ships LaTeX and Word styles); the two-column mode only shows how the
+content behaves at that measure. Its page count is indicative, not a conformance check.
 
 ## Layout
 
