@@ -205,6 +205,18 @@ defined), cross-reference validity, abstract length, absence of drafting markers
 headline figure against the JSON in `results/`. Run it before any submission — it fails if a
 number in the paper has drifted from what the harness produced.
 
+## PDF export
+
+```bash
+pip install markdown weasyprint
+python export_pdf.py ../papers/multi-agent-lakehouse/PAPER.md -o paper.pdf
+```
+
+Single-column working draft on US Letter: Bitstream Charter, justified with hyphenation,
+numeric table columns right-aligned, running page numbers. Intended for circulation and
+review. A camera-ready submission needs the venue's own two-column template — VLDB ships
+LaTeX and Word styles — so treat this as the reading copy, not the submission artifact.
+
 ## Layout
 
 ```
@@ -225,6 +237,7 @@ run_mitigations.py  CLI: mitigation ablation
 run_concurrency.py  CLI: fleet-size sweep under real concurrency
 analyse_survey_coverage.py  Recomputes the Section 2.3 term-frequency evidence
 check_paper.py              Consistency check: paper vs harness results
+export_pdf.py               Renders PAPER.md to a typeset PDF
 tests/         27 tests, including meaning-preservation of every mutation
 ```
 
