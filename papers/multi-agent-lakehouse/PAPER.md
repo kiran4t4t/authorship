@@ -24,31 +24,27 @@
 ## Abstract
 
 Analytical platforms were designed for a consumer that no longer dominates their workload.
-A human analyst issues few, deliberate queries and reuses saved logic. An LLM agent discovers
-schemas by sampling, generates several equivalent candidates per question, retries on error,
-and abandons partial work when a plan changes -- and enterprises now point fleets of them at a
-shared lakehouse.
+A human analyst issues few, deliberate queries and reuses saved logic. An LLM agent samples
+schemas, generates several equivalent candidates per question, retries, and abandons partial
+work. Enterprises now point fleets of them at a shared lakehouse.
 
 The evaluation literature has followed the agent, not the platform. Data-agent benchmarks
-decompose an agent's own latency and tokens by phase, including retries, and recent
-text-to-SQL work shows execution overtaking agent interaction as a dataset grows. All of it
-accounts for what one agent spends on one task. We hold the data fixed, grow the *fleet*, and
-account for what the *platform* spends. We present `agentlake`, an open harness that drives a
-configurable agent fleet against a lakehouse under test and instruments rows scanned, cache
-behaviour, catalog traffic and contention rather than answer accuracy.
+decompose an agent's latency and tokens by phase, including retries; recent text-to-SQL work
+shows execution overtaking agent interaction as data grows. All of it accounts for what one
+agent spends on one task. We hold data fixed, grow the *fleet*, and account for what the
+*platform* spends, via `agentlake`, an open harness instrumenting scan cost, cache behaviour,
+catalog traffic and contention rather than accuracy.
 
 Three results. Per-query monitoring inverts the sign of the cost result: agent queries scan
-32% fewer rows each than a human-analyst control while the workload costs 2.58x more per
-answered question, so existing instrumentation reports an improvement where there is a
-regression. The workload is additive in work but superlinear in latency: rows scanned per
-answered question is flat in fleet size (k = -0.02) while mean latency scales as fleet^0.76
-and throughput saturates at four concurrent agents. And in an ablation of five mitigations,
-the one that helps most is the least discussed -- cached column profiles remove 35.9% of scan
-cost with no loss of answers -- while tightening correction budgets, a common throttling
-reflex, makes cost per answered question 3.4% *worse*.
+32% fewer rows each than a human-analyst control while costing 2.58x more per answered
+question, so existing instrumentation reports an improvement where there is a regression. The
+workload is additive in work but superlinear in latency: scan cost per answered question is
+flat in fleet size (k = -0.02) while mean latency scales as fleet^0.76 and throughput
+saturates at four agents. Of five mitigations, the best is the least discussed -- cached
+column profiles cut 35.9% of scan cost with no loss of answers -- while tightening correction
+budgets, a common reflex, costs 3.4% *more* per answer.
 
-We release the harness, with the negative results and the methodological artifacts we
-corrected to obtain them.
+We release the harness, with the negative results and the artifacts we corrected.
 
 ## 1. Introduction
 
